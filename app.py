@@ -218,6 +218,10 @@ if __name__ == '__main__':
             actions = ActionChains(driver)
             check_input_password()
 
+            # moving to end of page
+            actions.move_to_element(driver.find_element_by_xpath('//div[@class="navFooterBackToTop"]')).perform()
+            actions.reset_actions()
+
             # scraping orders:
             bs4 = BeautifulSoup(driver.page_source,'html.parser')
             orders = bs4.find_all('div', class_='a-box-group a-spacing-base order')
@@ -238,7 +242,7 @@ if __name__ == '__main__':
         # output orders
         print(order_list)
         save_to_csv(order_list, 'amazon_orders.csv')
-
+        print('All done!')
     except:
         print('Something goes wrong')
 
