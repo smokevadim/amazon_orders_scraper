@@ -8,6 +8,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 from vars import *
+from datetime import datetime as dt
 import time
 import csv
 
@@ -21,12 +22,16 @@ if BROWSER == 'chrome':
     # options.add_argument("--window-size=1920x1080")
     driver = webdriver.Chrome(DRIVER, options=options)
 else:
-    #DRIVER = path.join(CURRENT_DIR, 'geckodriver.exe')
+    # DRIVER = path.join(CURRENT_DIR, 'geckodriver.exe')
     DRIVER = CURRENT_DIR
     options = webdriver.FirefoxOptions()
     driver = webdriver.Firefox(DRIVER, options=options)
 
 order_list = []
+
+
+def save_pic(driver):
+    driver.save_screenshot(str(dt.now().strftime('%d-%m-%Y %H-%M-%S'))+'.png')
 
 
 def get_years(driver):
@@ -46,10 +51,14 @@ def get_years(driver):
 
 
 def wait_for_user_auth():
-    element_present = EC.presence_of_element_located((By.NAME, 'claimspicker'))
-    WebDriverWait(driver, 60).until_not(element_present)
-    element_present = EC.presence_of_element_located((By.XPATH, '//h1[text()="Überprüfung Ihrer Identität"]'))
-    WebDriverWait(driver, 240).until_not(element_present)
+    try:
+        element_present = EC.presence_of_element_located((By.NAME, 'claimspicker'))
+        WebDriverWait(driver, 60).until_not(element_present)
+        element_present = EC.presence_of_element_located((By.XPATH, '//h1[text()="Überprüfung Ihrer Identität"]'))
+        WebDriverWait(driver, 240).until_not(element_present)
+    except Exception as e:
+        print(e)
+        save_pic(driver)
 
 
 def make_login(driver):
@@ -64,7 +73,8 @@ def make_login(driver):
         driver.find_element_by_xpath('//input[@id="continue"]').click()
     except:
         print('no login')
-        pass
+        save_pic(driver)
+
     # password
     try:
         time.sleep(2)
@@ -78,7 +88,7 @@ def make_login(driver):
         driver.find_element_by_xpath('//input[@id="signInSubmit"]').click()
     except:
         print('no pass')
-        pass
+        save_pic(driver)
 
     try:
         if 'Überprüfung erforderlich' in driver.find_element_by_xpath('//h1').text:
@@ -99,12 +109,13 @@ def make_login(driver):
     except:
         pass
 
+
 def check_telephone_auth():
     try:
         if 'Überprüfung erforderlich' in driver.find_element_by_xpath('//h1[text()="Überprüfung erforderlich"]').text:
             wait_for_user_auth()
     except:
-           pass
+        pass
 
 
 def check_input_password():
@@ -146,7 +157,7 @@ def get_title(item):
 
 def get_price(item):
     try:
-        price = item.find('span',class_='a-color-price').find('nobr').text.split(' ')[1].replace(',','.')
+        price = item.find('span', class_='a-color-price').find('nobr').text.split(' ')[1].replace(',', '.')
         return price
     except:
         pass
@@ -154,22 +165,24 @@ def get_price(item):
 
 def get_delivery_date(item):
     try:
-        delivery_date = item.find('div',class_='a-row a-size-small').text.split(' ')[-1]
+        delivery_date = item.find('div', class_='a-row a-size-small').text.split(' ')[-1]
         day = int(delivery_date.split('.')[0])
         day = '{0:02}'.format(day)
         month = int(delivery_date.split('.')[1])
         year = int(delivery_date.split('.')[2])
-        year = (year) if month>1 else (year-1)
-        month = (month-1) if month>1 else 12
+        year = (year) if month > 1 else (year - 1)
+        month = (month - 1) if month > 1 else 12
         month = '{0:02}'.format(month)
 
-        return '{}.{}.{}'.format(day,month,year)
+        return '{}.{}.{}'.format(day, month, year)
     except:
         pass
 
+
 def get_ordering_date(order):
     try:
-        ordering_date = order.find('div',class_='a-box-inner').find('div', class_='a-row a-size-base').find('span').text.strip()
+        ordering_date = order.find('div', class_='a-box-inner').find('div', class_='a-row a-size-base').find(
+            'span').text.strip()
         return ordering_date
     except:
         pass
@@ -177,7 +190,9 @@ def get_ordering_date(order):
 
 def get_delivery_status(order):
     try:
-        delivery_status = order.find('div', class_='a-box shipment').find('div', class_='a-row shipment-top-row js-shipment-info-container').find_all('span')[0].text
+        delivery_status = order.find('div', class_='a-box shipment').find('div',
+                                                                          class_='a-row shipment-top-row js-shipment-info-container').find_all(
+            'span')[0].text
         return delivery_status
     except:
         return 'ok'
@@ -189,13 +204,11 @@ def save_to_csv(order_list, path_):
             writer = csv.DictWriter(csvfile, fieldnames=order_list[0])
             writer.writeheader()
             writer.writerows(order_list)
-    except:
-        print('Can not write to file!')
-
+    except Exception as e:
+        print('Can not write to file! ({})'.format(e))
 
 
 if __name__ == '__main__':
-
     try:
         driver.get(BASE_LINK)
         actions = ActionChains(driver)
@@ -214,7 +227,9 @@ if __name__ == '__main__':
         if years is None:
             raise Exception('No years in order list')
         for year in years:
-            driver.get('https://www.amazon.de/gp/your-account/order-history?opt=ab&digitalOrders=1&language=de_DE&unifiedOrders=1&returnTo=&orderFilter=year-{}'.format(str(year)))
+            driver.get(
+                'https://www.amazon.de/gp/your-account/order-history?opt=ab&digitalOrders=1&language=de_DE&unifiedOrders=1&returnTo=&orderFilter=year-{}'.format(
+                    str(year)))
             actions = ActionChains(driver)
             check_input_password()
 
@@ -223,7 +238,7 @@ if __name__ == '__main__':
             actions.reset_actions()
 
             # scraping orders:
-            bs4 = BeautifulSoup(driver.page_source,'html.parser')
+            bs4 = BeautifulSoup(driver.page_source, 'html.parser')
             orders = bs4.find_all('div', class_='a-box-group a-spacing-base order')
             for order in orders:
                 items = order.find_all('div', class_='a-fixed-left-grid-col a-col-right')
@@ -243,7 +258,8 @@ if __name__ == '__main__':
         print(order_list)
         save_to_csv(order_list, 'amazon_orders.csv')
         print('All done!')
-    except:
-        print('Something goes wrong')
+    except Exception as e:
+        save_pic(driver)
+        print('Something goes wrong: ({})'.format(e))
 
     driver.close()
