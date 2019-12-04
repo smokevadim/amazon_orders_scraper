@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from os import path
 
 from selenium import webdriver
@@ -17,6 +18,7 @@ CURRENT_DIR = path.dirname(path.realpath(__file__))
 if BROWSER == 'chrome':
     DRIVER = path.join(CURRENT_DIR, 'chromedriver.exe')
     options = webdriver.ChromeOptions()
+    options.add_argument("--user-data-dir=chrome-data")
     # headless mode (without window)
     # options.add_argument('headless')
     # options.add_argument("--window-size=1920x1080")
@@ -31,12 +33,15 @@ order_list = []
 
 
 def save_pic(driver):
-    driver.save_screenshot(str(dt.now().strftime('%d-%m-%Y %H-%M-%S'))+'.png')
+    try:
+        driver.save_screenshot(str(dt.now().strftime('%d-%m-%Y %H-%M-%S')) + '.png')
+    except Exception as e:
+        print('Can not write screenshot to file! ({})'.format(e))
 
 
 def get_years(driver):
-    driver.get(
-        'https://www.amazon.de/gp/your-account/order-history?ie=UTF8&digitalOrders=1&opt=ab&returnTo=&unifiedOrders=1&')
+    driver.get(BASE_LINK +
+               '/gp/your-account/order-history?ie=UTF8&digitalOrders=1&opt=ab&returnTo=&unifiedOrders=1&')
     _years = driver.find_elements_by_xpath('//form[@id="timePeriodForm"]/*/select[@name="orderFilter"]/option')
 
     if len(_years) == 0:
@@ -46,7 +51,8 @@ def get_years(driver):
     years = []
     for year in reversed(_years):
         if '20' in year.text:
-            years.append(int(year.text))
+            if int(year.text) >= int(START_YEAR):
+                years.append(int(year.text))
     return years
 
 
@@ -192,7 +198,7 @@ def get_delivery_status(order):
     try:
         delivery_status = order.find('div', class_='a-box shipment').find('div',
                                                                           class_='a-row shipment-top-row js-shipment-info-container').find_all(
-            'span')[0].text
+            'span')[0].text.split().split('\n')
         return delivery_status
     except:
         return 'ok'
@@ -200,12 +206,85 @@ def get_delivery_status(order):
 
 def save_to_csv(order_list, path_):
     try:
-        with open(path_, 'w', encoding='utf8') as csvfile:
-            writer = csv.DictWriter(csvfile, fieldnames=order_list[0])
+        res = []
+        for i in order_list:
+            if i not in res:
+                res.append(dict((k, v.encode('utf-8') if type(v) == 'str' else v) for k, v in i.items()))
+        with open(path_, 'w', encoding='utf-8') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=order_list[0])
             writer.writeheader()
-            writer.writerows(order_list)
+            writer.writerows(res)
     except Exception as e:
         print('Can not write to file! ({})'.format(e))
+
+
+def get_pages():
+    try:
+        # getting numbers of pages
+        driver.get(BASE_LINK + '/gp/your-account/order-history?opt=ab&digitalOrders=1&unifiedOrders=1&returnTo'
+                               '=&__mk_de_DE=%C3%85M%C3%85%C5%BD%C3%95%C3%91&orderFilter=months-6&ie=UTF8')
+        actions = ActionChains(driver)
+        check_input_password()
+        # moving to end of page
+        move_to_end_of_page(actions)
+        # scraping orders:
+        bs4 = BeautifulSoup(driver.page_source, 'html.parser')
+        last_page = bs4.find_element('ul', class_='a-pagination').find_elements('li', class_='a-normal')[
+            -1].find_element('a').text
+        total_pages = []
+        for index in range(1, int(last_page) + 1):
+            total_pages.append(BASE_LINK + '/gp/your-account/order-history/ref=ppx_yo_dt_b_pagination_1_{'
+                                           '}?ie=UTF8&amp;orderFilter=months-6&amp;search=&amp;startIndex={}'.format(
+                index,
+                index * 10 - 10))
+        return total_pages
+    except Exception as e:
+        print('Getting pages error: ', e)
+
+
+def move_to_end_of_page(actions):
+    end_found = False
+    while end_found is False:
+        actions.send_keys(Keys.PAGE_DOWN).perform()
+        actions.reset_actions()
+        try:
+            EC.presence_of_element_located((By.XPATH, '//div[@class="navFooterBackToTop"]'))
+            end_found = True
+        except:
+            pass
+
+
+def scrape_page(url):
+    #    global actions, bs4, order
+    try:
+        driver.get(url)
+        actions = ActionChains(driver)
+        check_input_password()
+
+        # moving to end of page
+        move_to_end_of_page(actions)
+
+        # scraping orders:
+        bs4 = BeautifulSoup(driver.page_source, 'html.parser')
+        orders = bs4.find_all('div', class_='a-box-group a-spacing-base order')
+        for order in orders:
+            items = order.find_all('div', class_='a-fixed-left-grid-col a-col-right')
+            for item in items:
+                delivery_date = get_delivery_date(item)
+                delivery_status = get_delivery_status(order)
+                delivery_status = delivery_date if delivery_status == 'ok' else delivery_status
+                order_list.append({
+                    'title': get_title(item),
+                    'price': get_price(item),
+                    'delivery date': delivery_date,
+                    'ordering date': get_ordering_date(order),
+                    'delivery status': delivery_status
+                })
+    except:
+        pass
+
+    # waiting 2 seconds between requests
+    time.sleep(2)
 
 
 if __name__ == '__main__':
@@ -220,39 +299,21 @@ if __name__ == '__main__':
                 make_login(driver)
         except:
             pass
-        # konto_und_listen = driver.find_element_by_xpath('//span[text()="Konto und Listen" and @class="nav-line-2 "]')
 
         # going to orders:
         years = get_years(driver)
         if years is None:
             raise Exception('No years in order list')
         for year in years:
-            driver.get(
-                'https://www.amazon.de/gp/your-account/order-history?opt=ab&digitalOrders=1&language=de_DE&unifiedOrders=1&returnTo=&orderFilter=year-{}'.format(
-                    str(year)))
-            actions = ActionChains(driver)
-            check_input_password()
+            scrape_page(BASE_LINK +
+                        '/gp/your-account/order-history?opt=ab&digitalOrders=1&language=de_DE&unifiedOrders=1&returnTo=&orderFilter=year-{}&ie=UTF8'.format(
+                            str(year)))
 
-            # moving to end of page
-            actions.move_to_element(driver.find_element_by_xpath('//div[@class="navFooterBackToTop"]')).perform()
-            actions.reset_actions()
-
-            # scraping orders:
-            bs4 = BeautifulSoup(driver.page_source, 'html.parser')
-            orders = bs4.find_all('div', class_='a-box-group a-spacing-base order')
-            for order in orders:
-                items = order.find_all('div', class_='a-fixed-left-grid-col a-col-right')
-                for item in items:
-                    order_list.append({
-                        'title': get_title(item),
-                        'price': get_price(item),
-                        'delivery date': get_delivery_date(item),
-                        'ordering date': get_ordering_date(order),
-                        'delivery status': get_delivery_status(order)
-                    })
-
-            # waiting 2 seconds between requests
-            time.sleep(2)
+        # parsing pagination
+        pages = get_pages()
+        if pages is not None:
+            for page in pages:
+                scrape_page(page)
 
         # output orders
         print(order_list)
