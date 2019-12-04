@@ -14,6 +14,7 @@ import time
 import csv
 
 CURRENT_DIR = path.dirname(path.realpath(__file__))
+ver = '1.3'
 
 if BROWSER == 'chrome':
     DRIVER = path.join(CURRENT_DIR, 'chromedriver.exe')
@@ -209,34 +210,39 @@ def save_to_csv(order_list, path_):
         res = []
         for i in order_list:
             if i not in res:
-                res.append(dict((k, v.encode('utf-8') if type(v) == 'str' else v) for k, v in i.items()))
-        with open(path_, 'w', encoding='utf-8') as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=order_list[0])
+                res.append(dict((k, v.split('\n').encode('utf-8') if type(v) == 'str' else v) for k, v in i.items()))
+        with open(path_, 'w', encoding='utf-8', newline='') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=order_list[0], delimiter=';')
             writer.writeheader()
             writer.writerows(res)
     except Exception as e:
         print('Can not write to file! ({})'.format(e))
 
 
-def get_pages():
+def get_pages(year, page_year):
     try:
         # getting numbers of pages
-        driver.get(BASE_LINK + '/gp/your-account/order-history?opt=ab&digitalOrders=1&unifiedOrders=1&returnTo'
-                               '=&__mk_de_DE=%C3%85M%C3%85%C5%BD%C3%95%C3%91&orderFilter=months-6&ie=UTF8')
+        driver.get(page_year)
         actions = ActionChains(driver)
         check_input_password()
         # moving to end of page
         move_to_end_of_page(actions)
         # scraping orders:
         bs4 = BeautifulSoup(driver.page_source, 'html.parser')
-        last_page = bs4.find_element('ul', class_='a-pagination').find_elements('li', class_='a-normal')[
-            -1].find_element('a').text
+        try:
+            last_page = bs4.find('ul', class_='a-pagination').findAll('li', class_='a-normal')[-1].find('a').text
+        except:
+            print('No pages in ', year)
+            return
         total_pages = []
         for index in range(1, int(last_page) + 1):
-            total_pages.append(BASE_LINK + '/gp/your-account/order-history/ref=ppx_yo_dt_b_pagination_1_{'
-                                           '}?ie=UTF8&amp;orderFilter=months-6&amp;search=&amp;startIndex={}'.format(
+            page_url = BASE_LINK + '/gp/your-account/order-history/ref=ppx_yo_dt_b_pagination_1_{}?ie=UTF8&orderFilter=year-{}&search=&startIndex={}'.format(
                 index,
-                index * 10 - 10))
+                year,
+                index * 10 - 10)
+            total_pages.append(page_url)
+            print('Adding page: ', page_url)
+        time.sleep(2)
         return total_pages
     except Exception as e:
         print('Getting pages error: ', e)
@@ -257,6 +263,7 @@ def move_to_end_of_page(actions):
 def scrape_page(url):
     #    global actions, bs4, order
     try:
+        print('Scraping url: ', url)
         driver.get(url)
         actions = ActionChains(driver)
         check_input_password()
@@ -289,6 +296,7 @@ def scrape_page(url):
 
 if __name__ == '__main__':
     try:
+        print('Version: ', ver)
         driver.get(BASE_LINK)
         actions = ActionChains(driver)
 
@@ -305,15 +313,15 @@ if __name__ == '__main__':
         if years is None:
             raise Exception('No years in order list')
         for year in years:
-            scrape_page(BASE_LINK +
-                        '/gp/your-account/order-history?opt=ab&digitalOrders=1&language=de_DE&unifiedOrders=1&returnTo=&orderFilter=year-{}&ie=UTF8'.format(
-                            str(year)))
-
-        # parsing pagination
-        pages = get_pages()
-        if pages is not None:
-            for page in pages:
-                scrape_page(page)
+            page_year = BASE_LINK + '/gp/your-account/order-history?opt=ab&digitalOrders=1&language=de_DE&unifiedOrders=1&returnTo=&orderFilter=year-{}&ie=UTF8'.format(str(year))
+            # parsing pagination
+            pages = get_pages(year, page_year)
+            if pages is not None:
+                for page in pages:
+                    scrape_page(page)
+            # no pagination (only one page)
+            else:
+                scrape_page(page_year)
 
         # output orders
         print(order_list)
