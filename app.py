@@ -14,7 +14,7 @@ import time
 import csv
 
 CURRENT_DIR = path.dirname(path.realpath(__file__))
-ver = '1.3'
+ver = '1.4'
 
 if BROWSER == 'chrome':
     DRIVER = path.join(CURRENT_DIR, 'chromedriver.exe')
