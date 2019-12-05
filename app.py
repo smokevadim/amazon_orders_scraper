@@ -14,7 +14,7 @@ import time
 import csv
 
 CURRENT_DIR = path.dirname(path.realpath(__file__))
-ver = '1.4'
+ver = '1.5'
 
 if BROWSER == 'chrome':
     DRIVER = path.join(CURRENT_DIR, 'chromedriver.exe')
@@ -170,20 +170,23 @@ def get_price(item):
         pass
 
 
-def get_delivery_date(item):
+def get_delivery_date(order):
     try:
-        delivery_date = item.find('div', class_='a-row a-size-small').text.split(' ')[-1]
-        day = int(delivery_date.split('.')[0])
-        day = '{0:02}'.format(day)
-        month = int(delivery_date.split('.')[1])
-        year = int(delivery_date.split('.')[2])
-        year = (year) if month > 1 else (year - 1)
-        month = (month - 1) if month > 1 else 12
-        month = '{0:02}'.format(month)
-
-        return '{}.{}.{}'.format(day, month, year)
+        return order.find('div', class_='a-box shipment').find('div',
+                                                                          class_='a-row shipment-top-row js-shipment-info-container').find_all(
+            'span')[0].text.strip().strip('\n')
+        # delivery_date = item.find('div', class_='a-row a-size-small').text.split(' ')[-1]
+        # day = int(delivery_date.split('.')[0])
+        # day = '{0:02}'.format(day)
+        # month = int(delivery_date.split('.')[1])
+        # year = int(delivery_date.split('.')[2])
+        # year = (year) if month > 1 else (year - 1)
+        # month = (month - 1) if month > 1 else 12
+        # month = '{0:02}'.format(month)
+        #
+        # return '{}.{}.{}'.format(day, month, year)
     except:
-        pass
+        return
 
 
 def get_ordering_date(order):
@@ -197,12 +200,13 @@ def get_ordering_date(order):
 
 def get_delivery_status(order):
     try:
+        #delivery_status = order.find('div', class_='a-box shipment').find('div',class_='a-row shipment-top-row js-shipment-info-container').find_all('span')[0].text.strip().strip('\n')
         delivery_status = order.find('div', class_='a-box shipment').find('div',
                                                                           class_='a-row shipment-top-row js-shipment-info-container').find_all(
-            'span')[0].text.split().split('\n')
+            'span')[1].text.strip().strip('\n')
         return delivery_status
     except:
-        return 'ok'
+        return
 
 
 def save_to_csv(order_list, path_):
@@ -277,9 +281,9 @@ def scrape_page(url):
         for order in orders:
             items = order.find_all('div', class_='a-fixed-left-grid-col a-col-right')
             for item in items:
-                delivery_date = get_delivery_date(item)
+                delivery_date = get_delivery_date(order)
                 delivery_status = get_delivery_status(order)
-                delivery_status = delivery_date if delivery_status == 'ok' else delivery_status
+                # delivery_status = delivery_date if delivery_status == 'ok' else delivery_status
                 order_list.append({
                     'title': get_title(item),
                     'price': get_price(item),
